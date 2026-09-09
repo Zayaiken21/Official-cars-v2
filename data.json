@@ -473,6 +473,8 @@
     "verifiedCount": 24,
     "siteReportedTotal": 27,
     "note": "24 vehicles are exposed on the currently accessible first inventory page; the site reports 27 total. Importer supports additional authorized pages/feed data.",
-    "lastVerified": "2026-09-09"
+    "lastVerified": "2026-09-09",
+    "syncVersion": "4.0",
+    "sourceStrategy": "sitemap + inventory pagination + individual detail pages + JSON-LD/OpenGraph image extraction"
   }
 }
