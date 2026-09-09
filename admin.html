@@ -1,0 +1,28 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Official Cars Admin</title><link rel="stylesheet" href="styles.css"><style>
+body{background:#f6f7f9}.admin{max-width:1100px;margin:auto;padding:40px 20px}.box{background:#fff;border:1px solid #e5e7eb;border-radius:20px;padding:25px;margin:15px 0;box-shadow:0 10px 30px #00000008}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1}.admin input,.admin textarea{width:100%;padding:13px;border:1px solid #d9dde4;border-radius:10px;font:inherit}.admin textarea{min-height:260px;font-family:ui-monospace,monospace;font-size:12px}.msg{padding:10px;border-radius:10px;background:#f2f4f7;color:#555}.success{background:#e9f9ef;color:#166534}.danger{background:#fff0f0;color:#991b1b}.hidden{display:none!important}.table{overflow:auto}.table table{width:100%;border-collapse:collapse;font-size:12px}.table td,.table th{padding:9px;border-bottom:1px solid #eee;text-align:left;white-space:nowrap}
+</style></head><body><main class="admin">
+<a class="brand" href="index.html"><span class="brand-mark">OC</span><span>Official Cars</span></a>
+<div id="auth"></div>
+<section id="dashboard" class="hidden">
+<div class="box"><div class="eyebrow">AUTHORIZED INVENTORY IMPORT</div><h1>Dealer Sync</h1><p>Enter a dealer-approved inventory page, CSV feed, or API endpoint. The server imports data and saves it into <code>data.json</code>.</p>
+<div class="row"><input id="url" value="https://www.carstraderny.com/cars-for-sale"><button class="btn btn-primary" onclick="importFeed()">Import</button></div><p id="importMsg" class="msg">The starter database already contains the public inventory snapshot we retrieved.</p></div>
+<div class="box"><div class="section-head"><div><div class="eyebrow">INVENTORY</div><h2>Current vehicles</h2></div><div class="row"><button class="btn btn-light" onclick="downloadJSON()">Download JSON</button><button class="btn btn-dark" onclick="saveJSON()">Save JSON</button></div></div>
+<textarea id="jsonEditor" spellcheck="false"></textarea></div>
+<div class="box"><div class="eyebrow">IMPORT RESULTS</div><div id="results" class="table">No new import yet.</div></div>
+</section></main><script>
+async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||`HTTP ${r.status}`);return j}
+function esc(s){return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
+async function boot(){
+ const st=await api('/api/setup-status');
+ if(!st.configured){$("auth").innerHTML=`<section class="box"><div class="eyebrow">FIRST-TIME SETUP</div><h1>Create admin password</h1><p>This password protects inventory import and JSON editing. It is hashed on the server; it is not stored inside the JSON inventory file.</p><input id="p1" type="password" placeholder="At least 10 characters"><br><br><input id="p2" type="password" placeholder="Repeat password"><br><br><button class="btn btn-primary" onclick="setup()">Create password</button><p id="msg" class="msg"></p></section>`}
+ else $("auth").innerHTML=`<section class="box"><div class="eyebrow">ADMIN LOGIN</div><h1>Official Cars</h1><input id="loginp" type="password" placeholder="Admin password"><br><br><button class="btn btn-primary" onclick="login()">Log in</button><p id="msg" class="msg"></p></section>`;
+}
+function $(id){return document.getElementById(id)}
+async function setup(){try{if($("p1").value!==$("p2").value)throw Error("Passwords do not match");await api('/api/setup',{method:'POST',body:JSON.stringify({password:$("p1").value})});showDash()}catch(e){$("msg").textContent=e.message;$("msg").className="msg danger"}}
+async function login(){try{await api('/api/login',{method:'POST',body:JSON.stringify({password:$("loginp").value})});showDash()}catch(e){$("msg").textContent=e.message;$("msg").className="msg danger"}}
+async function showDash(){ $("auth").classList.add("hidden");$("dashboard").classList.remove("hidden");const d=await api('/api/admin/data');$("jsonEditor").value=JSON.stringify(d,null,2)}
+async function saveJSON(){try{const d=JSON.parse($("jsonEditor").value);const r=await api('/api/admin/save',{method:'POST',body:JSON.stringify(d)});$("importMsg").textContent=`Saved ${r.count} vehicles at ${r.lastSynced}`;$("importMsg").className="msg success"}catch(e){$("importMsg").textContent=e.message;$("importMsg").className="msg danger"}}
+async function importFeed(){try{$("importMsg").textContent="Importing…";const r=await api('/api/admin/import',{method:'POST',body:JSON.stringify({url:$("url").value})});$("results").innerHTML=`<p class="msg success">Detected ${r.found.length} vehicle records.</p><table><thead><tr><th>Vehicle</th><th>Price</th><th>Mileage</th><th>Source</th></tr></thead><tbody>${r.found.map(x=>`<tr><td>${esc(x.title)}</td><td>${x.price?('$'+x.price.toLocaleString()):'—'}</td><td>${x.mileage?x.mileage.toLocaleString():'—'}</td><td><a href="${esc(x.sourceUrl)}" target="_blank">open</a></td></tr>`).join("")}</tbody></table>`;$("importMsg").textContent="Review the import results, then merge/save the approved records into JSON.";$("importMsg").className="msg success"}catch(e){$("importMsg").textContent=e.message;$("importMsg").className="msg danger"}}
+function downloadJSON(){const b=new Blob([$("jsonEditor").value],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="official-cars-inventory.json";a.click();URL.revokeObjectURL(a.href)}
+boot();
+</script></body></html>
