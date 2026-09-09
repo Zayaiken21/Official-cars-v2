@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: official-cars-api
+    name: official-cars-v2
     runtime: node
     plan: free
     buildCommand: npm install
@@ -10,16 +10,16 @@ services:
         sync: false
       - key: ANALYTICS_SALT
         sync: false
+      # --- Optional: GitHub-backed persistence so inventory + analytics survive redeploys ---
       - key: GITHUB_TOKEN
-        sync: false
-      - key: GITHUB_OWNER
         sync: false
       - key: GITHUB_REPO
         sync: false
       - key: GITHUB_BRANCH
-        value: main
+        sync: false
       - key: GITHUB_DATA_PATH
-        value: official-cars-data.json
+        sync: false
+      # --- Optional: Web Push notifications for new listings ---
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
