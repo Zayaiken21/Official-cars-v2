@@ -1,44 +1,23 @@
-# Official Cars Render API
+# Official Cars API — Render
 
-Dynamic backend for Official Cars.
+## Fixes
+- `/` no longer returns Cannot GET /
+- `/health` confirms service status
+- `/admin` provides the protected admin UI
+- `/api/public` supplies dealer inventory to the static GitHub site
+- `/api/admin/import-url` provides an authorized Cars Trader NY importer endpoint
+- JSON import/export and inventory editing remain available
 
-## Render settings
+## Render
+Build: `npm install`
+Start: `npm start`
+Environment: `ADMIN_SECRET=<your strong password>`
 
-Create a **Web Service** from this repository.
+After deploy, test:
+`https://official-cars-v2.onrender.com/`
+`https://official-cars-v2.onrender.com/health`
+`https://official-cars-v2.onrender.com/api/public`
+`https://official-cars-v2.onrender.com/admin`
 
-Build command:
-`npm install`
-
-Start command:
-`npm start`
-
-Add environment variable:
-`ADMIN_SECRET` = a strong password you create.
-
-The server listens on `process.env.PORT` and `0.0.0.0`, as required by Render.
-
-## API
-
-GET `/health`
-
-GET `/api/public`
-
-POST `/api/admin/login`
-body: `{"password":"YOUR_ADMIN_SECRET"}`
-
-GET `/api/admin/data`
-header: `Authorization: Bearer TOKEN`
-
-PUT `/api/admin/data`
-header: `Authorization: Bearer TOKEN`
-body: `{"dealers":[],"vehicles":[]}`
-
-POST `/api/admin/import-json`
-header: `Authorization: Bearer TOKEN`
-
-GET `/api/admin/export`
-header: `Authorization: Bearer TOKEN`
-
-## Important persistence note
-
-`data.json` is a simple starter database. For a production marketplace, move inventory to Postgres/Supabase before relying on it for permanent business data. Render notes that local filesystem changes can be lost with deploys unless persistent storage is used; a database is the better production architecture.
+## Inventory
+The included seed contains the 24 vehicles exposed on the currently accessible first Cars Trader NY inventory page. The source page reports 27 total; the importer is included for the remaining authorized source data/feed.
