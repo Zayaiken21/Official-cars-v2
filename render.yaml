@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: official-cars-v2
+    name: official-cars-api
     runtime: node
     plan: free
     buildCommand: npm install
@@ -9,4 +9,20 @@ services:
       - key: ADMIN_SECRET
         sync: false
       - key: ANALYTICS_SALT
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_OWNER
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_BRANCH
+        value: main
+      - key: GITHUB_DATA_PATH
+        value: official-cars-data.json
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
         sync: false
