@@ -4,178 +4,56 @@ const fs=require("fs");
 const path=require("path");
 const crypto=require("crypto");
 const cheerio=require("cheerio");
+const zlib=require("zlib");
 
 const app=express();
 app.use(cors({origin:true}));
 app.use(express.json({limit:"50mb"}));
-
 const PORT=Number(process.env.PORT||10000);
 const ADMIN_SECRET=process.env.ADMIN_SECRET||"";
 const DB=path.join(__dirname,"data.json");
 const SOURCE="https://www.carstraderny.com/";
 const INVENTORY="https://www.carstraderny.com/cars-for-sale";
-const ALLOWED_HOST="www.carstraderny.com";
-const UA="Official-Cars-Inventory-Sync/4.0 (+authorized dealer inventory referral platform)";
+const ALLOWED_HOSTS=new Set(["www.carstraderny.com","carstraderny.com"]);
+const UA="Official-Cars-Authorized-Inventory-Sync/5.0";
+const ANALYTICS_SALT=process.env.ANALYTICS_SALT||"official-cars-analytics-v5";
 let syncState={running:false,startedAt:null,finishedAt:null,found:0,imported:0,errors:[],log:[]};
-
 function read(){return JSON.parse(fs.readFileSync(DB,"utf8"))}
 function write(d){fs.writeFileSync(DB,JSON.stringify(d,null,2))}
+function ensureAnalytics(d){if(!d.analytics)d.analytics={events:[]};if(!Array.isArray(d.analytics.events))d.analytics.events=[];return d}
 function clean(s=""){return String(s).replace(/\s+/g," ").trim()}
 function abs(base,href){try{return new URL(href,base).href}catch{return ""}}
 function money(s){let m=clean(s).match(/\$\s*([\d,]+(?:\.\d{2})?)/);return m?Number(m[1].replace(/,/g,"")):null}
-function number(s){let m=clean(s).replace(/,/g,"").match(/\b(\d{2,7})\b/);return m?Number(m[1]):null}
 function token(){return crypto.createHash("sha256").update(ADMIN_SECRET).digest("hex")}
-function auth(req,res,next){
-  if(!ADMIN_SECRET)return res.status(503).json({error:"Set ADMIN_SECRET in Render Environment Variables first."});
-  if(req.headers.authorization?.replace(/^Bearer\s+/,"")!==token())return res.status(401).json({error:"Unauthorized"});
-  next()
-}
-function allowed(url){try{let u=new URL(url);return u.protocol==="https:"&&u.hostname===ALLOWED_HOST}catch{return false}}
-async function fetchText(url){
-  if(!allowed(url)) throw new Error("Blocked source URL: "+url);
-  let r=await fetch(url,{headers:{"User-Agent":UA,"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},redirect:"follow"});
-  if(!r.ok)throw new Error(`HTTP ${r.status} ${url}`);
-  return await r.text()
-}
-function addLog(s){syncState.log.push(new Date().toISOString()+"  "+s); if(syncState.log.length>300)syncState.log.shift()}
-
-function imageCandidates($,base){
-  const out=[];
-  const add=u=>{u=abs(base,String(u||"").trim()); if(!u||!allowed(u))return; if(/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(u)||/images|image|photo|vehicle/i.test(u)) if(!out.includes(u))out.push(u)}
-  $('meta[property="og:image"],meta[name="twitter:image"]').each((_,e)=>add($(e).attr("content")));
-  $('img').each((_,e)=>{add($(e).attr("src"));add($(e).attr("data-src"));add($(e).attr("data-lazy-src"));add($(e).attr("data-original"));});
-  $('[srcset],[data-srcset]').each((_,e)=>{
-    String($(e).attr("srcset")||$(e).attr("data-srcset")||"").split(",").forEach(x=>add(x.trim().split(/\s+/)[0]))
-  });
-  $('script[type="application/ld+json"]').each((_,e)=>{
-    try{
-      let j=JSON.parse($(e).text().trim()); let arr=[];
-      const walk=o=>{if(!o)return;if(Array.isArray(o))return o.forEach(walk);if(typeof o!=="object")return;
-        if(o.image)arr.push(...(Array.isArray(o.image)?o.image:[o.image])); Object.values(o).forEach(v=>{if(typeof v==="object")walk(v)})
-      }; walk(j); arr.forEach(x=>add(typeof x==="string"?x:x?.url));
-    }catch{}
-  });
-  return out.slice(0,40)
-}
-
-function fieldFromText(text,label,nextLabels=[]){
-  let s=clean(text), esc=label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  let m=s.match(new RegExp(esc+"\\s*:?\\s*(.*?)(?=\\s+(?:"+nextLabels.map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")+")\\b|$)","i"));
-  return m?clean(m[1]):""
-}
-function parseDetail(url,html){
-  const $=cheerio.load(html); const text=clean($("body").text());
-  let title=clean($("h1").first().text()||$("meta[property='og:title']").attr("content")||"");
-  let jsonlds=[];
-  $('script[type="application/ld+json"]').each((_,e)=>{try{jsonlds.push(JSON.parse($(e).text()))}catch{}});
-  let product={}; const walk=o=>{if(!o||typeof o!=="object")return;if(Array.isArray(o))return o.forEach(walk);if(o["@type"]==="Vehicle"||o["@type"]==="Product")product={...product,...o};Object.values(o).forEach(v=>{if(typeof v==="object")walk(v)})};jsonlds.forEach(walk);
-
-  let price=product.offers?.price??money(text);
-  let mileage=product.mileageFromOdometer?.value??null; if(!mileage){let m=text.match(/Mileage\s+([\d,]+)/i);mileage=m?Number(m[1].replace(/,/g,"")):null}
-  let year=null,make="",model="";
-  let tm=title.match(/\b(19\d{2}|20\d{2})\s+(.+)/); if(tm){year=Number(tm[1]); let parts=tm[2].split(/\s+/);make=parts.shift()||"";model=parts.join(" ")}
-  if(product.vehicleConfiguration)model=clean(product.vehicleConfiguration);
-  const labels=["Mileage","Engine","Transmission","Drivetrain","Fuel Economy","Exterior","Interior","VIN","Stock","Price"];
-  let engine=fieldFromText(text,"Engine",labels.filter(x=>x!=="Engine"));
-  let transmission=fieldFromText(text,"Transmission",labels.filter(x=>x!=="Transmission"));
-  let drivetrain=fieldFromText(text,"Drivetrain",labels.filter(x=>x!=="Drivetrain"));
-  let fuelEconomy=fieldFromText(text,"Fuel Economy",labels.filter(x=>x!=="Fuel Economy"));
-  let vin=fieldFromText(text,"VIN",labels.filter(x=>x!=="VIN"));
-  let stock=fieldFromText(text,"Stock #",labels.filter(x=>x!=="Stock #"));
-  let description=clean($("meta[name='description']").attr("content")||$(".vehicle-description,.description").first().text()||"");
-  let features=[];
-  $(".features li,.feature-list li,[class*='feature'] li").each((_,e)=>{let x=clean($(e).text());if(x&&x.length<180&&!features.includes(x))features.push(x)});
-  const images=imageCandidates($,url);
-  return {
-    id:"ctny-"+crypto.createHash("sha1").update(url).digest("hex").slice(0,12),
-    dealerId:"cars-trader-ny", year, make, model, title, price:Number(price)||null, mileage:Number(mileage)||null,
-    engine, transmission, drivetrain, fuelEconomy, vin, stock, description, features:features.slice(0,80),
-    images, sourceUrl:url, source:"Cars Trader New York", syncedAt:new Date().toISOString()
-  }
-}
-
-async function discoverUrls(){
-  const pages=new Set([INVENTORY]);
-  const sitemapCandidates=[
-    "https://www.carstraderny.com/sitemap.xml",
-    "https://www.carstraderny.com/sitemap_index.xml",
-    "https://www.carstraderny.com/robots.txt"
-  ];
-  for(const u of sitemapCandidates){
-    try{
-      let t=await fetchText(u);
-      let locs=[...t.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].map(m=>m[1].trim());
-      if(u.endsWith("robots.txt")){
-        locs=[...t.matchAll(/Sitemap:\s*(https?:\/\/\S+)/gi)].map(m=>m[1].trim());
-        for(const sm of locs){try{let st=await fetchText(sm);[...st.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)].forEach(m=>locs.push(m[1].trim()))}catch{}}
-      }
-      for(const x of locs)if(allowed(x)&&(/cars-for-sale|details\//i.test(x)))pages.add(x);
-      addLog("Read source map/robots: "+u);
-    }catch(e){addLog("Map unavailable: "+u)}
-  }
-  // Crawl inventory + pagination links. This handles query/page variants used by the dealer site.
-  const queue=[INVENTORY]; const seen=new Set();
-  while(queue.length&&seen.size<25){
-    const u=queue.shift(); if(seen.has(u)||!allowed(u))continue; seen.add(u);
-    try{
-      const h=await fetchText(u),$=cheerio.load(h);
-      $("a[href]").each((_,e)=>{
-        const x=abs(u,$(e).attr("href"));
-        if(!allowed(x))return;
-        if(/\/details\//i.test(x))pages.add(x);
-        if(/cars-for-sale/i.test(x)&&(/page|p=|page=|\/2|\/3/i.test(x)))queue.push(x);
-      });
-      // common pagination data attributes / rel=next
-      $("link[rel=next],a[rel=next]").each((_,e)=>{let x=abs(u,$(e).attr("href"));if(x)queue.push(x)});
-    }catch(e){addLog("Inventory page failed: "+u)}
-  }
-  return [...pages]
-}
-
-async function doSync(){
-  syncState={running:true,startedAt:new Date().toISOString(),finishedAt:null,found:0,imported:0,errors:[],log:[]};
-  addLog("Starting authorized Cars Trader NY inventory sync.");
-  let urls=await discoverUrls();
-  let details=urls.filter(u=>/\/details\//i.test(u));
-  addLog("Discovered "+details.length+" individual vehicle links.");
-  const db=read(); const old=new Map((db.vehicles||[]).map(v=>[v.sourceUrl,v]));
-  for(let i=0;i<details.length;i++){
-    const u=details[i]; syncState.found=details.length;
-    try{
-      const h=await fetchText(u); const v=parseDetail(u,h);
-      if(v.images.length===0)addLog("Warning: no images extracted: "+u);
-      old.set(u,v); syncState.imported++;
-    }catch(e){syncState.errors.push(u+" — "+e.message)}
-    if(i%3===0)await new Promise(r=>setTimeout(r,80));
-  }
-  db.vehicles=[...old.values()].filter(v=>v.dealerId==="cars-trader-ny");
-  db.sourceMeta={...(db.sourceMeta||{}),lastSyncedAt:new Date().toISOString(),discovered:details.length,imported:syncState.imported,errors:syncState.errors.length,syncVersion:"4.0"};
-  write(db); syncState.running=false;syncState.finishedAt=new Date().toISOString();
-  addLog("Sync complete. "+syncState.imported+" vehicles imported/updated.");
-  return db;
-}
-
-app.get("/",(req,res)=>res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Official Cars API</title><style>body{margin:0;background:#06101d;color:#dff6ff;font:16px system-ui;display:grid;place-items:center;min-height:100vh}main{padding:40px;text-align:center;border:1px solid #1c496d;border-radius:24px;background:linear-gradient(145deg,#0b1e33,#07111f);box-shadow:0 30px 80px #0008}b{color:#61c7ff}</style></head><body><main><div style="font-size:42px">⚡</div><h1>Official Cars API</h1><p><b>Online</b> · inventory/referral backend</p><p><a style="color:#61c7ff" href="/health">Health check</a> · <a style="color:#61c7ff" href="/admin">Admin</a></p></main></body></html>`));
+function auth(req,res,next){if(!ADMIN_SECRET)return res.status(503).json({error:"Set ADMIN_SECRET in Render Environment Variables first."});if(req.headers.authorization?.replace(/^Bearer\s+/i,"")!==token())return res.status(401).json({error:"Unauthorized"});next()}
+function allowed(url){try{let u=new URL(url);return u.protocol==="https:"&&ALLOWED_HOSTS.has(u.hostname)}catch{return false}}
+async function fetchText(url){if(!allowed(url))throw new Error("Blocked source URL: "+url);let r=await fetch(url,{headers:{"User-Agent":UA,"Accept":"text/html,application/xml,text/xml,*/*;q=0.8"},redirect:"follow"});if(!r.ok)throw new Error(`HTTP ${r.status} ${url}`);let buf=Buffer.from(await r.arrayBuffer());let enc=(r.headers.get("content-encoding")||"").toLowerCase();try{if(enc.includes("gzip"))buf=zlib.gunzipSync(buf);else if(enc.includes("deflate"))buf=zlib.inflateSync(buf)}catch{}return buf.toString("utf8")}
+function addLog(s){syncState.log.push(new Date().toISOString()+"  "+s);if(syncState.log.length>500)syncState.log.shift()}
+function imageCandidates($,base){const out=[];const add=u=>{u=abs(base,String(u||"").trim());if(!u||!allowed(u))return;if(/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(u)||/images|image|photo|vehicle/i.test(u))if(!out.includes(u))out.push(u)};$('meta[property="og:image"],meta[name="twitter:image"]').each((_,e)=>add($(e).attr("content")));$('img').each((_,e)=>{["src","data-src","data-lazy-src","data-original","data-image"].forEach(k=>add($(e).attr(k)))});$('[srcset],[data-srcset]').each((_,e)=>String($(e).attr("srcset")||$(e).attr("data-srcset")||"").split(",").forEach(x=>add(x.trim().split(/\s+/)[0])));$('script[type="application/ld+json"]').each((_,e)=>{try{let j=JSON.parse($(e).text().trim());const walk=o=>{if(!o)return;if(Array.isArray(o))return o.forEach(walk);if(typeof o!=="object")return;if(o.image)(Array.isArray(o.image)?o.image:[o.image]).forEach(x=>add(typeof x==="string"?x:x?.url));Object.values(o).forEach(v=>{if(typeof v==="object")walk(v)})};walk(j)}catch{}});return out.slice(0,60)}
+function valueAfter(text,label,next){let s=clean(text);let i=s.toLowerCase().indexOf(label.toLowerCase());if(i<0)return"";let rest=s.slice(i+label.length).replace(/^\s*:?\s*/,"");let end=rest.length;for(const n of next){let j=rest.toLowerCase().indexOf(n.toLowerCase());if(j>=0)end=Math.min(end,j)}return clean(rest.slice(0,end))}
+function parseDetail(url,html){const $=cheerio.load(html);const text=clean($("body").text());let title=clean($("h1").first().text()||$("meta[property='og:title']").attr("content")||"");let jsonlds=[];$('script[type="application/ld+json"]').each((_,e)=>{try{jsonlds.push(JSON.parse($(e).text()))}catch{}});let product={};const walk=o=>{if(!o||typeof o!=="object")return;if(Array.isArray(o))return o.forEach(walk);if(o["@type"]==="Vehicle"||o["@type"]==="Product")product={...product,...o};Object.values(o).forEach(v=>{if(typeof v==="object")walk(v)})};jsonlds.forEach(walk);let price=product.offers?.price??money(text);let mileage=product.mileageFromOdometer?.value??null;if(!mileage){let m=text.match(/Mileage\s*:?\s*([\d,]+)/i);mileage=m?Number(m[1].replace(/,/g,"")):null}let year=null,make="",model="";let tm=title.match(/\b(19\d{2}|20\d{2})\s+(.+)/);if(tm){year=Number(tm[1]);let p=tm[2].split(/\s+/);make=p.shift()||"";model=p.join(" ")}if(product.brand?.name)make=clean(product.brand.name);if(product.model)model=clean(product.model);let labels=["Mileage","Engine","Transmission","Drivetrain","Fuel Economy","Exterior","Interior","VIN","Stock #","Stock","Price"];let engine=product.vehicleEngine?.name||valueAfter(text,"Engine",labels.filter(x=>x!=="Engine"));let transmission=valueAfter(text,"Transmission",labels.filter(x=>x!=="Transmission"));let drivetrain=product.driveWheelConfiguration||valueAfter(text,"Drivetrain",labels.filter(x=>x!=="Drivetrain"));let fuelEconomy=valueAfter(text,"Fuel Economy",labels.filter(x=>x!=="Fuel Economy"));let vin=product.vehicleIdentificationNumber||valueAfter(text,"VIN",labels.filter(x=>x!=="VIN"));let stock=valueAfter(text,"Stock #",labels.filter(x=>x!=="Stock #"));if(!stock)stock=valueAfter(text,"Stock",labels.filter(x=>x!=="Stock"));let description=clean($("meta[name='description']").attr("content")||$(".vehicle-description,.description").first().text()||product.description||"");let features=[];$(".features li,.feature-list li,[class*='feature'] li").each((_,e)=>{let x=clean($(e).text());if(x&&x.length<180&&!features.includes(x))features.push(x)});return {id:"ctny-"+crypto.createHash("sha1").update(url).digest("hex").slice(0,12),dealerId:"cars-trader-ny",year,make,model,title,price:Number(price)||null,mileage:Number(mileage)||null,engine,transmission,drivetrain,fuelEconomy,vin,stock,description,features:features.slice(0,80),images:imageCandidates($,url),sourceUrl:url,source:"Cars Trader New York",syncedAt:new Date().toISOString()}}
+async function crawlSitemap(url,seen,urls,depth=0){if(depth>4||seen.has(url)||!allowed(url))return;seen.add(url);try{let xml=await fetchText(url);let $=cheerio.load(xml,{xmlMode:true});let locs=$("loc").map((_,e)=>clean($(e).text())).get().map(x=>abs(url,x)).filter(allowed);let isIndex=$("sitemapindex").length>0||locs.some(x=>/sitemap/i.test(x)&&! /details\//i.test(x));if(isIndex){for(const x of locs)if(/sitemap/i.test(x))await crawlSitemap(x,seen,urls,depth+1)}else{for(const x of locs)if(/\/details\//i.test(x))urls.add(x)}addLog("Sitemap scanned: "+url+" · "+locs.length+" URLs") }catch(e){addLog("Sitemap unavailable: "+url)}}
+async function discoverUrls(){const details=new Set();const seenMaps=new Set();for(const u of ["https://www.carstraderny.com/sitemap.xml","https://www.carstraderny.com/sitemap_index.xml"] )await crawlSitemap(u,seenMaps,details);try{let robots=await fetchText("https://www.carstraderny.com/robots.txt");for(const m of robots.matchAll(/^\s*Sitemap:\s*(\S+)/gim))await crawlSitemap(m[1].trim(),seenMaps,details)}catch{addLog("robots.txt unavailable")}
+const queue=[INVENTORY];const seenPages=new Set();while(queue.length&&seenPages.size<40){const u=queue.shift();if(seenPages.has(u)||!allowed(u))continue;seenPages.add(u);try{let h=await fetchText(u),$=cheerio.load(h);$("a[href],link[href]").each((_,e)=>{let x=abs(u,$(e).attr("href"));if(!allowed(x))return;if(/\/details\//i.test(x))details.add(x);if(/cars-for-sale/i.test(x)&&(/page|p=|page=|\/\d+(?:\?|$)/i.test(x)))queue.push(x)});$("a[rel=next],link[rel=next]").each((_,e)=>{let x=abs(u,$(e).attr("href"));if(x)queue.push(x)})}catch(e){addLog("Inventory page failed: "+u+" · "+e.message)}}return [...details]}
+async function doSync(){syncState={running:true,startedAt:new Date().toISOString(),finishedAt:null,found:0,imported:0,errors:[],log:[]};addLog("Starting authorized Cars Trader NY sync via sitemap + inventory pagination.");let urls=await discoverUrls();syncState.found=urls.length;addLog("Discovered "+urls.length+" individual /details/ vehicle URLs.");const db=ensureAnalytics(read());const old=new Map((db.vehicles||[]).filter(v=>v.sourceUrl).map(v=>[v.sourceUrl,v]));for(let i=0;i<urls.length;i++){const u=urls[i];try{const h=await fetchText(u);const v=parseDetail(u,h);if(!v.images.length)addLog("No images extracted: "+u);old.set(u,v);syncState.imported++}catch(e){syncState.errors.push(u+" — "+e.message)}if(i%4===0)await new Promise(r=>setTimeout(r,100))}db.vehicles=[...old.values()].filter(v=>v.dealerId==="cars-trader-ny");db.sourceMeta={...(db.sourceMeta||{}),lastSyncedAt:new Date().toISOString(),discovered:urls.length,imported:syncState.imported,errors:syncState.errors.length,syncVersion:"5.0"};write(db);syncState.running=false;syncState.finishedAt=new Date().toISOString();addLog("Sync complete: "+syncState.imported+" vehicles imported/updated.")}
+function hashSession(s){return crypto.createHash("sha256").update(String(s)+ANALYTICS_SALT).digest("hex").slice(0,16)}
+function recordEvent(req,body){let d=ensureAnalytics(read());let type=String(body.type||"").slice(0,40);if(!["page_view","vehicle_view","outbound_click","search","filter"].includes(type))return;let event={ts:new Date().toISOString(),type,vehicleId:String(body.vehicleId||"").slice(0,80),dealerId:String(body.dealerId||"").slice(0,80),page:String(body.page||"").slice(0,120),filter:String(body.filter||"").slice(0,200),session:hashSession(body.sessionId||crypto.randomUUID()),referrer:String(body.referrer||"").slice(0,250)};d.analytics.events.push(event);if(d.analytics.events.length>50000)d.analytics.events=d.analytics.events.slice(-50000);write(d)}
+function rangeStart(range){let now=new Date();let d=new Date(now);if(range==="day")d.setHours(0,0,0,0);else if(range==="week"){let day=d.getDay();d.setHours(0,0,0,0);d.setDate(d.getDate()-day)}else if(range==="month"){d.setHours(0,0,0,0);d.setDate(1)}else if(range==="year"){d.setHours(0,0,0,0);d.setMonth(0,1)}else d=new Date(0);return d}
+function filteredEvents(q){let d=ensureAnalytics(read());let range=q.range||"month";let start=q.start?new Date(q.start):rangeStart(range);let end=q.end?new Date(q.end):new Date();let ev=d.analytics.events.filter(e=>new Date(e.ts)>=start&&new Date(e.ts)<=end);if(q.dealerId)ev=ev.filter(e=>e.dealerId===q.dealerId);if(q.vehicleId)ev=ev.filter(e=>e.vehicleId===q.vehicleId);return ev}
+function analyticsSummary(ev,d){const by=(key)=>{let m={};for(const e of ev){let k=e[key]||"unknown";m[k]=(m[k]||0)+1}return Object.entries(m).sort((a,b)=>b[1]-a[1])};let views=ev.filter(e=>e.type==="vehicle_view"),clicks=ev.filter(e=>e.type==="outbound_click"),pages=ev.filter(e=>e.type==="page_view");let vehicles=new Map((d.vehicles||[]).map(v=>[v.id,v]));let hot={};for(const e of [...views,...clicks]){if(!e.vehicleId)continue;hot[e.vehicleId]=(hot[e.vehicleId]||0)+(e.type==="outbound_click"?3:1)}let hotList=Object.entries(hot).sort((a,b)=>b[1]-a[1]).slice(0,50).map(([id,score])=>{let v=vehicles.get(id)||{};return {id,title:v.title||[v.year,v.make,v.model].filter(Boolean).join(" "),dealerId:v.dealerId||"",views:views.filter(e=>e.vehicleId===id).length,clicks:clicks.filter(e=>e.vehicleId===id).length,score,price:v.price||null,sourceUrl:v.sourceUrl||""}});return {totalEvents:ev.length,pageViews:pages.length,vehicleViews:views.length,outboundClicks:clicks.length,uniqueSessions:new Set(ev.map(e=>e.session)).size,topPages:by("page").slice(0,20),topDealers:by("dealerId").slice(0,20),hotVehicles:hotList}}
+function csvEscape(x){let s=String(x??"");return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+app.get("/",(req,res)=>res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Official Cars API</title><style>body{margin:0;background:#06101d;color:#dff6ff;font:16px system-ui;display:grid;place-items:center;min-height:100vh}main{padding:40px;text-align:center;border:1px solid #1c496d;border-radius:24px;background:linear-gradient(145deg,#0b1e33,#07111f);box-shadow:0 30px 80px #0008}b{color:#61c7ff}a{color:#61c7ff}</style></head><body><main><div style="font-size:42px">⚡</div><h1>Official Cars API</h1><p><b>Online</b> · inventory + referral analytics backend</p><p><a href="/health">Health</a> · <a href="/admin">Admin</a></p></main></body></html>`));
 app.get("/health",(req,res)=>res.json({ok:true,service:"official-cars-api",sync:syncState}));
-app.get("/api/public",(req,res)=>{const d=read();res.json({dealers:d.dealers||[],vehicles:d.vehicles||[],sourceMeta:d.sourceMeta||{}})});
-app.get("/api/sync-status",auth,(req,res)=>res.json(syncState));
-app.post("/api/admin/sync",auth,async(req,res)=>{
-  if(syncState.running)return res.status(409).json({error:"A sync is already running",status:syncState});
-  doSync().catch(e=>{syncState.running=false;syncState.errors.push(e.message);addLog("FATAL: "+e.message)});
-  res.json({ok:true,message:"Sync started",status:syncState});
-});
-app.post("/api/admin/save",auth,(req,res)=>{if(!req.body||!Array.isArray(req.body.vehicles))return res.status(400).json({error:"Invalid data"});write(req.body);res.json({ok:true})});
-app.get("/api/admin/export",auth,(req,res)=>{res.setHeader("Content-Disposition","attachment; filename=official-cars-data.json");res.json(read())});
+app.get("/api/public",(req,res)=>{const d=ensureAnalytics(read());res.json({dealers:d.dealers||[],vehicles:d.vehicles||[],sourceMeta:d.sourceMeta||{}})});
+app.post("/api/track",(req,res)=>{try{recordEvent(req,req.body||{});res.status(204).end()}catch(e){res.status(204).end()}});
+app.get("/go/:id",(req,res)=>{let d=read(),v=(d.vehicles||[]).find(x=>x.id===req.params.id);if(!v||!allowed(v.sourceUrl))return res.status(404).send("Vehicle listing unavailable");try{recordEvent(req,{type:"outbound_click",vehicleId:v.id,dealerId:v.dealerId,page:"vehicle",sessionId:req.query.s||""})}catch{}res.redirect(302,v.sourceUrl)});
+app.get("/api/image",(req,res)=>{let u=String(req.query.url||"");if(!allowed(u))return res.status(400).end();fetch(u,{headers:{"User-Agent":UA,"Referer":SOURCE}}).then(async r=>{if(!r.ok)return res.status(r.status).end();let ct=r.headers.get("content-type")||"image/jpeg";if(!ct.startsWith("image/"))return res.status(415).end();res.setHeader("Content-Type",ct);res.setHeader("Cache-Control","public,max-age=86400");res.setHeader("Access-Control-Allow-Origin","*");res.send(Buffer.from(await r.arrayBuffer()))}).catch(()=>res.status(502).end())});
 app.post("/api/admin/login",(req,res)=>{if(!ADMIN_SECRET||req.body?.password!==ADMIN_SECRET)return res.status(401).json({error:"Invalid password"});res.json({token:token()})});
-app.get("/api/image",(req,res)=>{
-  const u=String(req.query.url||""); if(!allowed(u))return res.status(400).end();
-  fetch(u,{headers:{"User-Agent":UA,"Referer":SOURCE}}).then(async r=>{
-    if(!r.ok)return res.status(r.status).end();
-    res.setHeader("Content-Type",r.headers.get("content-type")||"image/jpeg");
-    res.setHeader("Cache-Control","public,max-age=86400");
-    res.setHeader("Access-Control-Allow-Origin","*");
-    res.send(Buffer.from(await r.arrayBuffer()));
-  }).catch(()=>res.status(502).end());
-});
+app.get("/api/sync-status",auth,(req,res)=>res.json(syncState));
+app.post("/api/admin/sync",auth,async(req,res)=>{if(syncState.running)return res.json({ok:true,status:syncState});doSync().catch(e=>{syncState.running=false;syncState.errors.push(e.message);addLog("FATAL: "+e.message)});res.json({ok:true,status:syncState})});
+app.get("/api/admin/analytics",auth,(req,res)=>{let d=ensureAnalytics(read()),ev=filteredEvents(req.query),s=analyticsSummary(ev,d);res.json({range:req.query.range||"month",start:req.query.start||null,end:req.query.end||null,summary:s})});
+app.get("/api/admin/analytics.csv",auth,(req,res)=>{let d=ensureAnalytics(read()),ev=filteredEvents(req.query);let rows=["timestamp,event,vehicle_id,dealer_id,page,filter,session_hash,referrer"];for(const e of ev)rows.push([e.ts,e.type,e.vehicleId,e.dealerId,e.page,e.filter,e.session,e.referrer].map(csvEscape).join(","));res.setHeader("Content-Type","text/csv");res.setHeader("Content-Disposition","attachment; filename=official-cars-analytics.csv");res.send(rows.join("\n"))});
+app.get("/api/admin/export",auth,(req,res)=>{res.setHeader("Content-Disposition","attachment; filename=official-cars-data.json");res.json(read())});
+app.post("/api/admin/save",auth,(req,res)=>{if(!req.body||!Array.isArray(req.body.vehicles))return res.status(400).json({error:"Invalid data"});write(ensureAnalytics(req.body));res.json({ok:true})});
 app.get("/admin",(req,res)=>res.sendFile(path.join(__dirname,"admin.html")));
 app.listen(PORT,"0.0.0.0",()=>console.log("Official Cars API listening on "+PORT));

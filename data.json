@@ -476,5 +476,8 @@
     "lastVerified": "2026-09-09",
     "syncVersion": "4.0",
     "sourceStrategy": "sitemap + inventory pagination + individual detail pages + JSON-LD/OpenGraph image extraction"
+  },
+  "analytics": {
+    "events": []
   }
 }

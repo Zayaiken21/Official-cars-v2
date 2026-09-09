@@ -8,3 +8,5 @@ services:
     envVars:
       - key: ADMIN_SECRET
         sync: false
+      - key: ANALYTICS_SALT
+        sync: false

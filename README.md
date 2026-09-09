@@ -1,23 +1,20 @@
-# Official Cars Render Backend v4
+# Official Cars Render v5
 
 Node/Express backend for Official Cars.
 
-## Deploy on Render
+## Render
 - Build: `npm install`
 - Start: `npm start`
-- Environment variable: `ADMIN_SECRET`
+- Required: `ADMIN_SECRET`
+- Recommended: `ANALYTICS_SALT`
 
-## Admin
-`/admin`
+## Features
+- Authorized Cars Trader NY sitemap/index + inventory pagination discovery
+- Individual `/details/` page parsing
+- Real source URLs retained per vehicle
+- Server-side `/go/:vehicleId` redirect for tracked outbound dealer clicks
+- Restricted image proxy for authorized source host
+- First-party page/view/click analytics with hashed session IDs
+- Admin date filters and filtered CSV export
 
-Use **Sync entire dealer inventory**. The sync discovers authorized Cars Trader NY inventory URLs using:
-1. XML sitemap / sitemap index when available
-2. robots.txt sitemap declarations
-3. Cars Trader NY inventory pagination
-4. Individual `/details/` pages
-
-Each detail page is parsed for structured data, page metadata, vehicle fields, original URL and image URLs.
-
-The `/api/image` route proxies only `www.carstraderny.com` HTTPS images so the public GitHub Pages site can reliably display dealer photos.
-
-Keep written authorization from the dealer for use of their inventory, photos and listing links.
+For additional dealers, use a dealer-provided feed/API whenever possible. Only use website images/data where the dealer agreement permits it.
