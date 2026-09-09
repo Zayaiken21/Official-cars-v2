@@ -7,10 +7,7 @@
       "address": "2342 Coney Island Ave, Brooklyn, NY 11223",
       "phone": "(718) 872-5420",
       "website": "https://www.carstraderny.com/",
-      "source": "authorized-partner",
-      "locations": [],
-      "lat": null,
-      "lng": null
+      "source": "authorized-partner"
     }
   ],
   "vehicles": [
@@ -31,10 +28,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 115410,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-002",
@@ -53,10 +47,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 143871,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-003",
@@ -75,10 +66,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 88758,
-      "bodyStyle": "Sedan",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-004",
@@ -97,10 +85,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 143451,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-005",
@@ -119,10 +104,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 172101,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-006",
@@ -141,10 +123,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 106623,
-      "bodyStyle": "Sedan",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-007",
@@ -163,10 +142,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 86403,
-      "bodyStyle": "Sedan",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-008",
@@ -185,10 +161,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 137863,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-009",
@@ -207,10 +180,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 47763,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-010",
@@ -229,10 +199,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 135436,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-011",
@@ -251,10 +218,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 104596,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-012",
@@ -273,10 +237,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 188268,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-013",
@@ -295,10 +256,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 166818,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-014",
@@ -317,10 +275,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 98169,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-015",
@@ -339,10 +294,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 140187,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-016",
@@ -361,10 +313,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 153435,
-      "bodyStyle": "Crossover",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-017",
@@ -383,10 +332,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 213460,
-      "bodyStyle": "Crossover",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-018",
@@ -405,10 +351,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 111346,
-      "bodyStyle": "Cargo Mini-Van",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-019",
@@ -427,10 +370,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 151432,
-      "bodyStyle": "Sedan",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-020",
@@ -449,10 +389,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 114085,
-      "bodyStyle": "Mini-Van",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-021",
@@ -471,10 +408,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 143520,
-      "bodyStyle": "Mini-Van",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-022",
@@ -493,10 +427,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 109508,
-      "bodyStyle": "Hatchback",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-023",
@@ -515,10 +446,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 81215,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     },
     {
       "id": "ctny-024",
@@ -537,10 +465,7 @@
       "source": "Cars Trader NY",
       "url": "https://www.carstraderny.com/cars-for-sale",
       "status": "active",
-      "lastVerified": "2026-09-09",
-      "mileage": 140988,
-      "bodyStyle": "SUV",
-      "firstSeenAt": "2026-09-09"
+      "lastVerified": "2026-09-09"
     }
   ],
   "sourceMeta": {
@@ -554,6 +479,5 @@
   },
   "analytics": {
     "events": []
-  },
-  "pushSubscriptions": []
+  }
 }

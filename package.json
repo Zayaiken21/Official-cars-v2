@@ -1,16 +1,1 @@
-{
-  "name": "official-cars-api",
-  "version": "8.0.0",
-  "private": true,
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "generate-vapid-keys": "node -e \"console.log(require('web-push').generateVAPIDKeys())\""
-  },
-  "dependencies": {
-    "cheerio": "^1.0.0",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "web-push": "^3.6.7"
-  }
-}
+{"name":"official-cars-api","version":"8.0.0","private":true,"main":"server.js","scripts":{"start":"node server.js"},"dependencies":{"cheerio":"^1.0.0","cors":"^2.8.5","express":"^4.21.2","web-push":"^3.6.7"}}
