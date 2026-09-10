@@ -14,7 +14,7 @@ app.use(express.json({limit:'50mb'}));
 const PORT=Number(process.env.PORT||10000),DB=path.join(__dirname,'data.json');
 const ADMIN_SECRET=process.env.ADMIN_SECRET||'';
 const ANALYTICS_SALT=process.env.ANALYTICS_SALT||crypto.randomBytes(16).toString('hex');
-const UA='Mozilla/5.0 (compatible; Official-Cars-Authorized-Dealer-Sync/8.1; +https://officialcars.example)';
+const UA='Official-Cars-Authorized-Dealer-Sync/8.0';
 const GH={token:process.env.GITHUB_TOKEN||'',owner:process.env.GITHUB_OWNER||'',repo:process.env.GITHUB_REPO||'',branch:process.env.GITHUB_BRANCH||'main',file:process.env.GITHUB_DATA_PATH||'official-cars-data.json'};
 const PUSH={publicKey:process.env.VAPID_PUBLIC_KEY||'',privateKey:process.env.VAPID_PRIVATE_KEY||'',subject:process.env.VAPID_SUBJECT||'mailto:admin@officialcars.example'};
 let syncState={running:false,startedAt:null,finishedAt:null,found:0,imported:0,skipped:0,errors:[],log:[],currentDealer:null,currentUrl:null,totalUrls:0,processed:0,phase:'idle'};
@@ -35,36 +35,7 @@ function auth(req,res,next){if(!ADMIN_SECRET)return res.status(503).json({error:
 function log(s){syncState.log.push(new Date().toISOString()+'  '+s);if(syncState.log.length>1000)syncState.log.shift()}
 function money(s){let m=clean(s).match(/\$\s*([\d,]+(?:\.\d{2})?)/);return m?Number(m[1].replace(/,/g,'')):null}
 function num(s){if(s===null||s===undefined||s==='')return null;let m=String(s).replace(/,/g,'').match(/-?\d+(?:\.\d+)?/);return m?Number(m[0]):null}
-async function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
-async function fetchText(url,domains,referer){
-  if(!/^https:\/\//i.test(url)||!hostAllowed(url,domains))throw new Error('URL not allowed for this dealer');
-  let last='';
-  for(let attempt=0;attempt<5;attempt++){
-    try{
-      let r=await fetch(url,{headers:{
-        'User-Agent':UA,
-        'Accept':'text/html,application/xhtml+xml,application/xml,text/xml,application/json,*/*;q=.7',
-        'Accept-Language':'en-US,en;q=0.8',
-        ...(referer?{'Referer':referer}:{}),
-        'Cache-Control':'no-cache'
-      },redirect:'follow',signal:AbortSignal.timeout(18000)});
-      if(r.ok){
-        let b=Buffer.from(await r.arrayBuffer()),enc=(r.headers.get('content-encoding')||'').toLowerCase();
-        try{if(enc.includes('gzip'))b=zlib.gunzipSync(b);else if(enc.includes('deflate'))b=zlib.inflateSync(b)}catch{}
-        return b.toString('utf8');
-      }
-      last=`HTTP ${r.status}`;
-      if(![408,425,429,500,502,503,504].includes(r.status))throw new Error(last);
-      let retry=Number(r.headers.get('retry-after')||0);
-      await sleep(Math.min(12000,Math.max(800,retry*1000||800*Math.pow(2,attempt))));
-    }catch(e){
-      last=e?.name==='TimeoutError'?'Request timeout':(e?.message||String(e));
-      if(attempt===4)throw new Error(last);
-      await sleep(Math.min(6000,700*Math.pow(2,attempt)));
-    }
-  }
-  throw new Error(last||'Request failed');
-}
+async function fetchText(url,domains,referer){if(!/^https:\/\//i.test(url)||!hostAllowed(url,domains))throw new Error('URL not allowed for this dealer');let r=await fetch(url,{headers:{'User-Agent':UA,'Accept':'text/html,application/xml,text/xml,application/json,*/*;q=.7',...(referer?{Referer:referer}:{})},redirect:'follow'});if(!r.ok)throw new Error(`HTTP ${r.status}`);let b=Buffer.from(await r.arrayBuffer()),enc=(r.headers.get('content-encoding')||'').toLowerCase();try{if(enc.includes('gzip'))b=zlib.gunzipSync(b);else if(enc.includes('deflate'))b=zlib.inflateSync(b)}catch{}return b.toString('utf8')}
 function parseJsonLd($){let out=[];$('script[type="application/ld+json"]').each((_,e)=>{try{let raw=$(e).text().trim();if(raw)out.push(JSON.parse(raw))}catch{}});return out}
 function flatten(o,out=[]){if(!o)return out;if(Array.isArray(o)){o.forEach(x=>flatten(x,out));return out}if(typeof o==='object'){out.push(o);Object.values(o).forEach(x=>{if(x&&typeof x==='object')flatten(x,out)})}return out}
 function types(o){return String(o?.['@type']||'').toLowerCase().split(/[,\s]+/)}
@@ -73,38 +44,7 @@ function addressObject(a){if(!a)return null;if(typeof a==='string')return {forma
 function extractLocations(nodes,baseUrl){let out=[];const add=(x,kind='location')=>{if(!x)return;let a=addressObject(x.address||x);let phone=clean(x.telephone||x.phone||'');let name=clean(x.name||'');let website=abs(baseUrl,x.url||'');let lat=num(x.geo?.latitude),lon=num(x.geo?.longitude);if(a||phone||name||lat!==null){let key=(a?.formatted||'')+'|'+phone+'|'+name;if(!out.some(v=>(v.address?.formatted||'')+'|'+v.phone+'|'+v.name===key))out.push({name,address:a||{formatted:''},phone,website,latitude:lat,longitude:lon,kind})}};
   nodes.forEach(x=>{if(types(x).some(t=>['organization','localbusiness','automotivedealer','store','department'].includes(t))){add(x);if(Array.isArray(x.location))x.location.forEach(y=>add(y,'location'));if(x.location&&typeof x.location==='object'&&!Array.isArray(x.location))add(x.location,'location');if(Array.isArray(x.department))x.department.forEach(y=>add(y,'department'));if(x.subOrganization)Array.isArray(x.subOrganization)?x.subOrganization.forEach(y=>add(y,'location')):add(x.subOrganization,'location')}});
   return out}
-function visibleBusinessSignals($){
-  let phone='';
-  $('a[href^="tel:"]').each((_,e)=>{if(!phone)phone=clean($(e).attr('href').replace(/^tel:/i,''))});
-  if(!phone){
-    let t=clean($('body').text());
-    phone=(t.match(/(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-])\d{3}[\s.-]\d{4}/)||[])[0]||'';
-  }
-  let addresses=[];
-  $('address,[itemprop="address"],[class*="address" i],[id*="address" i],[class*="location" i]').each((_,e)=>{
-    let x=clean($(e).text()); if(/\b\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,8},\s*[A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/.test(x)) addresses.push(x.slice(0,300));
-  });
-  let body=clean($('body').text());
-  let rx=/\b\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,8},\s*[A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/g;
-  addresses.push(...(body.match(rx)||[]));
-  return {phone,addresses:[...new Set(addresses)]};
-}
-function businessInfo(url,html){
-  const $=cheerio.load(html),nodes=flatten(parseJsonLd($)),b=firstType(nodes,['organization','localbusiness','automotivedealer','store']);
-  let locs=extractLocations(nodes,url), visible=visibleBusinessSignals($);
-  let address=addressObject(b?.address)||locs.find(x=>x.address?.formatted)?.address||null;
-  let phone=clean(b?.telephone||visible.phone||locs.find(x=>x.phone)?.phone||'');
-  let logo=typeof b?.logo==='string'?b.logo:b?.logo?.url||'';
-  let name=clean(b?.name||$('meta[property="og:site_name"]').attr('content')||$('meta[name="application-name"]').attr('content')||$('title').first().text().replace(/\s*[|•-].*$/,''));
-  let website=abs(url,b?.url)||url,social=[];
-  if(Array.isArray(b?.sameAs))social=b.sameAs.filter(x=>/^https?:\/\//.test(x));
-  for(const a of visible.addresses){
-    if(!locs.some(x=>(x.address?.formatted||'').toLowerCase()===a.toLowerCase()))
-      locs.push({name,address:{formatted:a},phone,website,latitude:null,longitude:null,kind:'visible'});
-  }
-  if(!locs.length&&address)locs=[{name,address,phone,website,latitude:address.latitude,longitude:address.longitude,kind:'primary'}];
-  return{name,address:address?.formatted||locs.find(x=>x.address?.formatted)?.address?.formatted||'',phone,website,logo:abs(url,logo),social,locations:locs};
-}
+function businessInfo(url,html){const $=cheerio.load(html),nodes=flatten(parseJsonLd($)),b=firstType(nodes,['organization','localbusiness','automotivedealer','store']);let locs=extractLocations(nodes,url);let address=addressObject(b?.address)||locs.find(x=>x.address?.formatted)?.address||null;let phone=clean(b?.telephone||$('a[href^="tel:"]').first().attr('href')?.replace(/^tel:/i,'')||locs.find(x=>x.phone)?.phone||'');let logo=typeof b?.logo==='string'?b.logo:b?.logo?.url||$('meta[property="og:image"]').attr('content')||'';let name=clean(b?.name||$('meta[property="og:site_name"]').attr('content')||$('meta[name="application-name"]').attr('content')||$('title').first().text().replace(/\s*[|•-].*$/,''));let website=abs(url,b?.url)||url;let social=[];if(Array.isArray(b?.sameAs))social=b.sameAs.filter(x=>/^https?:\/\//.test(x));if(!locs.length&&address)locs=[{name,address,phone,website,latitude:address.latitude,longitude:address.longitude,kind:'primary'}];return{name,address:address?.formatted||'',phone,website,logo:abs(url,logo),social,locations:locs}}
 function imageCandidates($,base,vehicleNodes=[]){let out=[],seen=new Set();const add=u=>{u=abs(base,String(u||'').trim());if(!/^https:\/\//i.test(u)||seen.has(u))return;let low=u.toLowerCase();if(/logo|favicon|icon|sprite|avatar|tracking|pixel/i.test(low))return;if(!(/\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(u)||/image|photo|vehicle|media|inventory|cdn|dealerimage/i.test(low)))return;seen.add(u);out.push(u)};
   // Structured vehicle photos first. Dealer logos/branding are deliberately de-prioritized.
   vehicleNodes.forEach(o=>{let im=o.image;if(im)(Array.isArray(im)?im:[im]).forEach(x=>add(typeof x==='string'?x:x?.url))});
@@ -118,115 +58,10 @@ function parseVehicle(url,html,dealer){const $=cheerio.load(html),text=clean($('
 async function discoverSitemaps(home,domains){let maps=[],seen=new Set(),queue=[new URL('/robots.txt',home).href,new URL('/sitemap.xml',home).href,new URL('/sitemap_index.xml',home).href];while(queue.length&&seen.size<60){let u=queue.shift();if(seen.has(u)||!hostAllowed(u,domains))continue;seen.add(u);try{let x=await fetchText(u,domains,home);if(u.endsWith('/robots.txt')){for(const m of x.matchAll(/^\s*Sitemap:\s*(\S+)/gim))queue.push(abs(u,m[1]))}else{let $=cheerio.load(x,{xmlMode:true});$('loc').each((_,e)=>{let v=abs(u,clean($(e).text()));if(hostAllowed(v,domains)&&/sitemap/i.test(v))queue.push(v)});maps.push(u)}}catch{}}return maps}
 function likelyVehicleUrl(u){return /\/details?\//i.test(u)||/\/vehicle[-_/]/i.test(u)||/\/inventory\/[^/?]+/i.test(u)||/\/used[-_]?cars?\/[^/?]+/i.test(u)||/\/new[-_]?cars?\/[^/?]+/i.test(u)||/\/cars[-_]?for[-_]sale\/[^/?]+/i.test(u)||/\/(?:19|20)\d{2}[-_]/i.test(u)}
 async function discoverVehicleUrls(dealer){const domains=dealerDomains(dealer),home=dealer.website,urls=new Set(),maps=await discoverSitemaps(home,domains);for(const m of maps){try{let x=await fetchText(m,domains,home),$=cheerio.load(x,{xmlMode:true});$('loc').each((_,e)=>{let u=abs(m,clean($(e).text()));if(hostAllowed(u,domains)&&(likelyVehicleUrl(u)||/vehicle|inventory|cars-for-sale|used-cars|new-cars/i.test(u)))urls.add(u)})}catch{}}let queue=[home],seen=new Set();for(let pass=0;queue.length&&pass<160;pass++){let u=queue.shift();if(seen.has(u)||!hostAllowed(u,domains))continue;seen.add(u);try{let h=await fetchText(u,domains,home),$=cheerio.load(h);$('a[href]').each((_,e)=>{let v=abs(u,$(e).attr('href'));if(!hostAllowed(v,domains))return;if(likelyVehicleUrl(v))urls.add(v);if(/inventory|cars-for-sale|used-cars|new-cars|vehicles|page=|\/page\//i.test(v)&&queue.length<250)queue.push(v)})}catch{}}return[...urls].filter(u=>!/\.(xml|pdf|jpg|jpeg|png|webp|css|js)(\?|$)/i.test(u)).slice(0,2000)}
-async function discoverLocationLinks(dealer){
-  const domains=dealerDomains(dealer),seen=new Set(),q=[
-    dealer.website,
-    new URL('/contact',dealer.website).href,
-    new URL('/contact-us',dealer.website).href,
-    new URL('/locations',dealer.website).href,
-    new URL('/dealerships',dealer.website).href,
-    new URL('/about/contact-us',dealer.website).href
-  ],out=[];
-  while(q.length&&seen.size<40){
-    let u=q.shift(); if(seen.has(u)||!hostAllowed(u,domains))continue; seen.add(u);
-    try{
-      let h=await fetchText(u,domains,dealer.website),$=cheerio.load(h);
-      $('a[href]').each((_,e)=>{
-        let v=abs(u,$(e).attr('href')),t=clean($(e).text());
-        if(hostAllowed(v,domains)&&/(location|locations|contact|stores?|dealerships?|directions|hours)/i.test(t+' '+v)&&!seen.has(v)&&q.length<60)q.push(v);
-      });
-      out.push({url:u,html:h});
-      await sleep(80);
-    }catch(e){log(`${dealer.name}: location page skipped ${u} — ${e.message}`)}
-  }
-  return out;
-}
-async function geocode(address){
-  if(!address||/\bnot found\b/i.test(address))return null;
-  try{
-    let q=address;
-    if(!/\b(?:USA|United States|US)\b/i.test(q))q+=', USA';
-    let r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&addressdetails=1&q='+encodeURIComponent(q),{
-      headers:{'User-Agent':'Official-Cars/8.1 authorized-dealer-directory'}
-    });
-    if(!r.ok)return null;
-    let j=await r.json();
-    if(!j[0])return null;
-    return {latitude:Number(j[0].lat),longitude:Number(j[0].lon),displayName:j[0].display_name||''};
-  }catch{return null}
-}
-async function enrichDealerLocations(dealer,homeHtml){
-  let home=null; try{home=cheerio.load(homeHtml)}catch{}
-  let nodes=flatten(parseJsonLd(home)),locs=extractLocations(nodes,dealer.website);
-  if(home){
-    for(const a of visibleBusinessSignals(home).addresses)locs.push({name:dealer.name,address:{formatted:a},phone:dealer.phone,website:dealer.website,kind:'visible'});
-  }
-  for(const p of await discoverLocationLinks(dealer)){
-    let $p=cheerio.load(p.html),n=extractLocations(flatten(parseJsonLd($p)),p.url);locs.push(...n);
-    for(const a of visibleBusinessSignals($p).addresses)locs.push({name:dealer.name,address:{formatted:a},phone:dealer.phone,website:dealer.website,kind:'visible'});
-  }
-  if(dealer.address)locs.push({name:dealer.name,address:{formatted:dealer.address},phone:dealer.phone,website:dealer.website,kind:'primary'});
-  let uniq=[];
-  for(let l of locs){
-    let formatted=clean(l.address?.formatted||'');
-    if(!formatted && !l.phone && !l.name)continue;
-    let key=(formatted.toLowerCase()+'|'+clean(l.phone||'').replace(/\D/g,''));
-    if(uniq.some(x=>(clean(x.address?.formatted||'').toLowerCase()+'|'+clean(x.phone||'').replace(/\D/g,''))===key))continue;
-    if(l.latitude==null&&formatted){let g=await geocode(formatted);if(g){l.latitude=g.latitude;l.longitude=g.longitude}}
-    if(l.address){
-      let parts=formatted.match(/,\s*([^,]+),\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?/);
-      if(parts){l.address.city=clean(parts[1]);l.address.state=parts[2].toUpperCase()}
-    }
-    uniq.push(l);
-  }
-  return uniq.slice(0,100);
-}
-async function syncDealer(dealer){
-  syncState.currentDealer=dealer.id; syncState.phase='reading-business'; dealer.syncStatus='syncing';
-  let d=ensure(read()); d.dealers=d.dealers.map(x=>x.id===dealer.id?dealer:x); write(d);
-  let domains=dealerDomains(dealer),homeHtml,info;
-  try{
-    homeHtml=await fetchText(dealer.website,domains);
-    info=businessInfo(dealer.website,homeHtml);
-  }catch(e){
-    dealer.syncStatus='failed'; dealer.syncErrors=(dealer.syncErrors||0)+1; dealer.lastSyncError=e.message;
-    d=ensure(read()); d.dealers=d.dealers.map(x=>x.id===dealer.id?dealer:x); write(d); schedulePersist();
-    throw new Error(`${dealer.name||dealer.website}: website unavailable — ${e.message}`);
-  }
-  dealer.name=info.name||dealer.name; dealer.address=info.address||dealer.address||''; dealer.phone=info.phone||dealer.phone||'';
-  dealer.logo=info.logo||dealer.logo||''; dealer.social=info.social||dealer.social||[];
-  dealer.locations=await enrichDealerLocations(dealer,homeHtml);
-  if(!dealer.locations.length&&dealer.address)dealer.locations=[{name:dealer.name,address:{formatted:dealer.address},phone:dealer.phone,website:dealer.website}];
-  d=ensure(read()); d.dealers=d.dealers.map(x=>x.id===dealer.id?dealer:x); write(d); schedulePersist();
-  syncState.phase='discovering';
-  let urls=await discoverVehicleUrls(dealer); syncState.totalUrls=urls.length; syncState.found=urls.length;
-  log(`${dealer.name}: discovered ${urls.length} candidate listing URLs; ${dealer.locations.length} locations.`);
-  let old=new Map((ensure(read()).vehicles||[]).filter(v=>v.dealerId===dealer.id).map(v=>[v.sourceUrl||v.url,v]));
-  let ok=0,skipped=0,newOnes=[];
-  for(let i=0;i<urls.length;i++){
-    syncState.phase='importing'; syncState.processed=i+1; syncState.currentUrl=urls[i];
-    try{
-      let h=await fetchText(urls[i],domains,dealer.website),v=parseVehicle(urls[i],h,dealer);
-      if(!v.title||(!v.price&&!v.vin&&!v.stock&&v.images.length<2)){skipped++;continue}
-      let prior=old.get(urls[i]);
-      v.firstSeenAt=prior?.firstSeenAt||new Date().toISOString();
-      v.isNew=(Date.now()-new Date(v.firstSeenAt).getTime())<14*86400000;
-      v.lastSeenAt=new Date().toISOString();
-      if(!v.images.length&&prior?.images?.length)v.images=prior.images;
-      old.set(urls[i],v); ok++; if(!prior)newOnes.push(v);
-    }catch(e){syncState.errors.push(`${dealer.name}: ${urls[i]} — ${e.message}`)}
-    if(i%5===0){d=ensure(read());d.dealers=d.dealers.map(x=>x.id===dealer.id?dealer:x);write(d);schedulePersist();await sleep(100)}
-  }
-  d=ensure(read()); d.vehicles=(d.vehicles||[]).filter(v=>v.dealerId!==dealer.id).concat([...old.values()]);
-  dealer.lastSyncedAt=new Date().toISOString(); dealer.lastSyncCount=ok;
-  dealer.syncErrors=syncState.errors.filter(x=>x.startsWith(dealer.name+':')).length;
-  dealer.syncStatus='success'; dealer.lastSyncError='';
-  d.dealers=d.dealers.map(x=>x.id===dealer.id?dealer:x); d.sourceMeta={...(d.sourceMeta||{}),lastSyncedAt:new Date().toISOString()}; write(d); schedulePersist();
-  syncState.imported=ok;syncState.skipped=skipped;syncState.phase='complete';
-  log(`${dealer.name}: ${ok} vehicles imported, ${skipped} skipped, ${newOnes.length} new, ${dealer.locations.length} locations.`);
-  if(newOnes.length)notifyAll({title:`New cars at ${dealer.name}`,body:`${newOnes.length} new vehicle${newOnes.length===1?'':'s'} just arrived on Official Cars.`,url:'https://zayaiken21.github.io/Official-Cars/#/cars'}).catch(()=>{});
-  return ok;
-}
+async function discoverLocationLinks(dealer){const domains=dealerDomains(dealer),seen=new Set(),q=[dealer.website],out=[];for(let i=0;q.length&&i<20;i++){let u=q.shift();if(seen.has(u))continue;seen.add(u);try{let h=await fetchText(u,domains,dealer.website),$=cheerio.load(h);$('a[href]').each((_,e)=>{let v=abs(u,$(e).attr('href')),t=clean($(e).text());if(hostAllowed(v,domains)&&/(location|locations|contact|stores?|dealerships?)/i.test(t+' '+v)&&!seen.has(v))q.push(v)});out.push({url:u,html:h})}catch{}}return out}
+async function geocode(address){if(!address||/\bnot found\b/i.test(address))return null;try{let r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q='+encodeURIComponent(address),{headers:{'User-Agent':'Official-Cars/8.0 authorized-dealer-directory'}});if(!r.ok)return null;let j=await r.json();return j[0]?{latitude:Number(j[0].lat),longitude:Number(j[0].lon)}:null}catch{return null}}
+async function enrichDealerLocations(dealer,homeHtml){let nodes=flatten(parseJsonLd(cheerio.load(homeHtml))),locs=extractLocations(nodes,dealer.website);for(const p of await discoverLocationLinks(dealer)){let n=extractLocations(flatten(parseJsonLd(cheerio.load(p.html))),p.url);locs.push(...n)}let uniq=[];for(let l of locs){let key=(l.address?.formatted||l.name||l.phone||'').toLowerCase();if(!key||uniq.some(x=>(x.address?.formatted||x.name||x.phone||'').toLowerCase()===key))continue;if(l.latitude==null&&l.address?.formatted){let g=await geocode(l.address.formatted);if(g){l.latitude=g.latitude;l.longitude=g.longitude}}uniq.push(l)}if(!uniq.length&&dealer.address){let g=await geocode(dealer.address);uniq=[{name:dealer.name,address:{formatted:dealer.address},phone:dealer.phone,website:dealer.website,...(g||{})}]}return uniq.slice(0,50)}
+async function syncDealer(dealer){syncState.currentDealer=dealer.id;syncState.phase='discovering';let homeHtml=await fetchText(dealer.website,dealerDomains(dealer));let info=businessInfo(dealer.website,homeHtml);dealer.name=info.name||dealer.name;dealer.address=info.address||dealer.address||'';dealer.phone=info.phone||dealer.phone||'';dealer.logo=info.logo||dealer.logo||'';dealer.social=info.social||dealer.social||[];dealer.locations=await enrichDealerLocations(dealer,homeHtml);dealer.locations.forEach(l=>{if(!l.latitude||!l.longitude){} });if(!dealer.locations.length&&dealer.address){dealer.locations=[{name:dealer.name,address:{formatted:dealer.address},phone:dealer.phone,website:dealer.website}]};let urls=await discoverVehicleUrls(dealer);syncState.totalUrls=urls.length;syncState.found=urls.length;log(`${dealer.name}: discovered ${urls.length} candidate listing URLs.`);let d=ensure(read()),old=new Map((d.vehicles||[]).filter(v=>v.dealerId===dealer.id).map(v=>[v.sourceUrl||v.url,v]));let ok=0,skipped=0,newOnes=[];for(let i=0;i<urls.length;i++){syncState.phase='importing';syncState.processed=i+1;syncState.currentUrl=urls[i];try{let h=await fetchText(urls[i],dealerDomains(dealer),dealer.website),v=parseVehicle(urls[i],h,dealer);if(!v.title||(!v.price&&!v.vin&&!v.stock&&v.images.length<2)){skipped++;continue}let prior=old.get(urls[i]);v.firstSeenAt=prior?.firstSeenAt||new Date().toISOString();if(!prior)newOnes.push(v);v.isNew=(Date.now()-new Date(v.firstSeenAt).getTime())<14*86400000;v.lastSeenAt=new Date().toISOString();if(!v.images.length&&prior?.images?.length)v.images=prior.images;old.set(urls[i],v);ok++}catch(e){syncState.errors.push(`${dealer.name}: ${urls[i]} — ${e.message}`)}if(i%10===0)await new Promise(r=>setTimeout(r,30))}d.vehicles=(d.vehicles||[]).filter(v=>v.dealerId!==dealer.id).concat([...old.values()]);dealer.lastSyncedAt=new Date().toISOString();dealer.lastSyncCount=ok;dealer.syncErrors=syncState.errors.filter(x=>x.startsWith(dealer.name+':')).length;dealer.syncStatus='success';d.dealers=d.dealers.map(x=>x.id===dealer.id?dealer:x);d.sourceMeta={...(d.sourceMeta||{}),lastSyncedAt:new Date().toISOString()};write(d);schedulePersist();syncState.imported=ok;syncState.skipped=skipped;syncState.phase='complete';log(`${dealer.name}: ${ok} vehicles imported, ${skipped} candidates skipped, ${newOnes.length} newly found.`);if(newOnes.length)notifyAll({title:`New cars at ${dealer.name}`,body:`${newOnes.length} new vehicle${newOnes.length===1?'':'s'} just arrived on Official Cars.`,url:'https://zayaiken21.github.io/Official-Cars/#/cars'}).catch(()=>{});return ok}
 function ensure(d){d.dealers??=[];d.vehicles??=[];d.analytics??={events:[]};d.analytics.events??=[];d.pushSubscriptions??=[];for(const v of d.vehicles){if(!v.sourceUrl&&v.url)v.sourceUrl=v.url;if(!v.url&&v.sourceUrl)v.url=v.sourceUrl;if(!v.firstSeenAt)v.firstSeenAt=v.syncedAt||new Date().toISOString();v.isNew=(Date.now()-new Date(v.firstSeenAt).getTime())<14*86400000}return d}
 function schedulePersist(){if(!GH.token||!GH.owner||!GH.repo)return;if(persistTimer)return;persistTimer=setTimeout(()=>{persistTimer=null;persistGithub().catch(e=>log('GitHub persistence: '+e.message))},5000)}
 async function ghApi(method,url,body){let r=await fetch(url,{method,headers:{Authorization:`Bearer ${GH.token}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});let j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||`GitHub HTTP ${r.status}`);return j}
@@ -263,4 +98,4 @@ app.post('/api/push/subscribe',(req,res)=>{if(!webpush||!PUSH.publicKey||!PUSH.p
 app.post('/api/admin/test-notification',auth,async(req,res)=>{let n=await notifyAll({title:'Official Cars',body:'Test notification: your Official Cars alerts are working.',url:'https://zayaiken21.github.io/Official-Cars/#/cars'});res.json({ok:true,sent:n})});
 async function notifyAll(payload){if(!webpush||!PUSH.publicKey||!PUSH.privateKey)return 0;webpush.setVapidDetails(PUSH.subject,PUSH.publicKey,PUSH.privateKey);let d=ensure(read()),subs=d.pushSubscriptions||[],sent=0,keep=[];for(const s of subs){try{await webpush.sendNotification(s.subscription,JSON.stringify(payload));sent++;keep.push(s)}catch(e){if(![404,410].includes(e.statusCode))keep.push(s)}}d.pushSubscriptions=keep;write(d);schedulePersist();return sent}
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'admin.html')));
-(async()=>{ensure(read());await restoreGithub();app.listen(PORT,'0.0.0.0',()=>console.log('Official Cars API v8.1 listening on '+PORT));})();
+(async()=>{ensure(read());await restoreGithub();app.listen(PORT,'0.0.0.0',()=>console.log('Official Cars API v8 listening on '+PORT));})();

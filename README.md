@@ -1,13 +1,9 @@
-# Official Cars V8.1 — Sync & Dealer Data Repair
+# Official Cars V8 — Production Dealer Control
 
 This package is the repaired Render backend for Official Cars.
 
-## What V8.1 fixes
+## What V8 fixes
 - Professional dealer import and selected-dealer synchronization.
-- 429/5xx retry and exponential backoff so dealer sites do not fail the entire sync when temporarily rate-limiting requests.
-- Business data fallback extraction from visible phone/address content and contact/location pages.
-- Dealer business information is persisted before vehicle crawling so partial syncs do not lose discovered company data.
-- Empty starting database: no dealer is hardcoded; dealers enter only through the Admin importer.
 - Multi-location dealer discovery and vehicle location assignment.
 - State/city/location/distance filtering support in the public site.
 - Browser geolocation + Haversine mileage-to-dealer calculations.
