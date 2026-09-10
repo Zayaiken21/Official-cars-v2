@@ -53,3 +53,12 @@ The crawler is intended for participating/authorized dealer sources. A sitemap i
 7. Select the dealer and click **Sync selected dealer**.
 8. Watch the live progress panel until it says `complete`.
 9. Open the public Pages site and test a vehicle photo and **View actual dealer listing**.
+
+
+## V9 production hardening
+- 20-second request timeout plus bounded concurrent vehicle imports prevent sync hangs.
+- Vehicle photo candidates are ranked using structured Vehicle/Product images and vehicle-context attributes while excluding common storefront/dealer-building assets.
+- Discovered authorized image CDN hosts are retained on the dealer record.
+- GitHub Pages opens the exact sourceUrl directly after tracking, so the listing does not depend on the Render redirect route.
+- Multi-location filtering uses location IDs/address data and shopper geolocation distance.
+- Vehicle detail gallery is a photo-based interactive orbit viewer, not a fabricated 3D mesh.
