@@ -5,8 +5,5 @@
     "events": []
   },
   "pushSubscriptions": [],
-  "sourceMeta": {
-    "version": 11,
-    "seeded": false
-  }
+  "sourceMeta": {}
 }
