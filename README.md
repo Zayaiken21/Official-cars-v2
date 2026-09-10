@@ -1,20 +1,43 @@
-# Official Cars V10 — Production Control
+# Official Cars — Render Backend V12
 
-Deploy this folder as the Render backend. Set:
-- ADMIN_SECRET
-- ANALYTICS_SALT
-- GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, GITHUB_DATA_PATH for persistent data
-- VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT for web push
+Production backend for the Official Cars referral/discovery platform.
 
-V10 improvements:
-- Reliable exact dealer listing links from GitHub Pages
-- Vehicle-name-first analytics with 30-minute page/dealer view deduplication
-- Robust multi-location/state/city normalization and geocoding
-- Bounded, timeout-protected sync workers with stale-sync recovery
-- Better vehicle image discovery, excluding storefront/social/brand imagery
-- Preserves good photos when a later sync temporarily misses them
-- Detailed vehicle fields and location association
-- Persistent GitHub snapshots without overwriting analytics recorded during sync
-- Authorized image-host support
+## Dealer lifecycle
+- The packaged `data.json` intentionally contains **zero hardcoded dealers or vehicles**.
+- Dealers are added from Admin with an HTTPS website URL.
+- Add Dealer reads the business profile and location/contact pages, saves the dealer permanently, then automatically starts an inventory sync.
+- A saved dealer remains until an administrator deletes it.
+- Delete removes that dealer's vehicles and dealer-scoped analytics.
 
-Important: website synchronization is for participating/authorized dealer sources. A crawler cannot legally or technically guarantee access to JavaScript-only, blocked, login-gated, or feed-only inventory. For those partners, use their authorized API/XML/CSV/feed.
+## Sync/import
+The importer uses authorized dealer websites and attempts, in bounded order, to discover:
+- robots.txt and sitemap/sitemap-index inventory URLs
+- inventory/category/pagination pages
+- embedded JSON/framework state
+- common inventory JSON endpoints
+- individual vehicle pages
+- business/location/contact pages
+
+Vehicle records contain only shopper-relevant published vehicle data: title, year/make/model/trim, price, mileage, engine, transmission, drivetrain, fuel, body style, MPG, horsepower/torque when published, VIN/stock, description, features, vehicle photos, dealer location and exact source listing URL.
+
+Photo collection prioritizes vehicle/gallery images and excludes common storefront, logo, showroom, staff, facility and contact imagery. Image URLs are retained only when discovered from the authorized vehicle pages and are served through the protected image endpoint.
+
+The sync worker uses request timeouts, 429/502/503/504 retry/backoff, host throttling, bounded concurrency, heartbeats and a safety timeout so a rate-limited dealer does not leave the control center permanently stuck.
+
+## Required Render environment variables
+- `ADMIN_SECRET`
+- `ANALYTICS_SALT`
+- `GITHUB_TOKEN`
+- `GITHUB_OWNER`
+- `GITHUB_REPO`
+- `GITHUB_BRANCH` (default `main`)
+- `GITHUB_DATA_PATH` (default `official-cars-data.json`)
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT`
+
+## Persistence
+When GitHub variables are configured, dealer records, vehicles and analytics are persisted to the configured GitHub JSON data file. Render's local filesystem is not treated as the permanent database.
+
+## Authorization
+Only synchronize dealer inventory and images when the dealer has authorized Official Cars to use the applicable inventory data, listing URLs and photographs, or has provided an authorized feed/API/XML/CSV source.
